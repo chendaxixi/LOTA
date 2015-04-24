@@ -1,0 +1,2 @@
+# LOTA
+My first AI
