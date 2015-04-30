@@ -217,6 +217,13 @@ void UpdateData(PCommand* cmd){
 				UpdateUnit(data->towers[i]);
 			}
 		}
+		else{
+			for(int i = 0;i < 2;i++){
+				data->towers.push_back(PUnit(3, 12+i, 1, 1, Player1_tower_pos[i].x, Player1_tower_pos[i].y));
+				data->towers[i].max_hp = 0;
+				UpdateUnit(data->towers[i]);
+			}			
+		}
 	}
 
 	output << "revivingTIMEsize:" << data->revivingTIME.size() << " " << data->enemys.size() << endl;
