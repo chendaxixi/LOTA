@@ -153,11 +153,12 @@ Pos FindHeroWaitPos(PUnit& hero, PUnit& enemy);
 void UpdateTarget(PUnit& hero);
 bool LevelUp(PUnit& hero, PCommand* cmd);
 int FindDirection(PUnit& hero, PUnit& enemy);
+bool canUseSkill(PUnit& hero, int typeId);
 
 //全局变量
 Update updates[UpdateCount] = {Update_0, Update_1, Update_2, Update_3, Update_4, Update_5, Update_6, Update_7, Update_8, Update_9, Update_10};
 int updates_State[UpdateCount] = {0,1,2,3,4,5,6,7,8,9,10};
-int updateRank[UpdateCount] = {10,9,8,7,6,5,4,3,2,1,0};
+int updateRank[UpdateCount] = {10,9,8,7,6,5,2,4,3,1,0};
 Rule rules[StateCount][RuleCount] = {
 	{Rule_0_0, Rule_0_1, Rule_0_2, Rule_0_3},
 	{Rule_1_0, Rule_1_1, Rule_1_2, Rule_1_3, Rule_1_4},
@@ -222,6 +223,9 @@ void Interpert_Input(PCommand* cmd){
 	output << "blocks:" << data->block.size() << " " << data->blocksAdd << endl;
 	for(int i = 0;i < data->blocksAdd;i++)
 		data->block.pop_back();
+	for(int i = 0;i < cmd->cmds.size();i++){
+		output << "!!!cmd: id:" << cmd->cmds[i].id << " typeId:" << cmd->cmds[i].typeId << endl;
+	}
 }
 //更新data
 void UpdateData(PCommand* cmd){
@@ -280,6 +284,9 @@ void UpdateData(PCommand* cmd){
 	}
 	
 	for(int i = 0;i < data->myHeros.size();i++){
+		if(data->myHeros[i].findBuff("Reviving")){
+			data->state[i] = 0;
+		}
 		UpdateUnit(data->target[i]);
 		UpdateState(data->myHeros[i]);
 		UpdateTarget(data->myHeros[i]);
@@ -325,6 +332,9 @@ bool Update_1(PUnit& hero){
 }
 //状态：遭遇对方英雄状态
 bool Update_2(PUnit& hero){
+	if(hero.findBuff(0)){
+		return false;
+	}
 	for(int i = 3;i < 8;i++){
 		if(isSeen(data->enemys[i]) && (dis2(data->enemys[i].pos, hero.pos) <= hero.view)){
 			return true;
@@ -351,7 +361,7 @@ bool Update_4(PUnit& hero){
 	}
 	bool flag = true;
 	for(int i = 0;i < data->myHeros.size();i++){
-		if(data->myHeros[i].level < 3 || data->myHeros[i].hp < 105){
+		if(data->myHeros[i].level < 2 || data->myHeros[i].hp < 105){
 			flag = false;
 			break;
 		}
@@ -374,16 +384,20 @@ bool Update_6(PUnit& hero){
 	if(data->state[rankHero(hero)] == 6){
 		return true;
 	}
+	int num = 0;
 	for(int i = 0;i < data->myHeros.size();i++){
 		if(data->state[i] != 5 && data->state[i] != 6){
-			return false;
+			num++;
 		}
 	}
-	return true;
+	if(num <= 2){
+		return true;
+	}
+	return false;
 }
 //状态：目标死亡状态
 bool Update_7(PUnit& hero){
-	return isTargetDead(data->target[rankHero(hero)]);	
+	return isTargetDead(hero);	
 }
 //状态：对方塔边清敌状态
 bool Update_8(PUnit& hero){
@@ -413,30 +427,28 @@ bool Rule_0_0(PUnit& hero){
 		return false;
 	}
 	output << "!!!!!!!!!!!" << data->info->round << " " << hero.findBuff(0) << endl;
-	if(!hero.canUseSkill(13)){
+	if(!canUseSkill(hero, 13)){
 		return false;
 	}
 	double HideSpeed[] = {1.41, 1.58, 1.73};
 	int round = ArriveTime(hero, FindHeroAtkPos(hero, data->target[rankHero(hero)]), 
 		hero.speed * HideSpeed[data->levelUP[rankHero(hero)]-1]);
-	if(round < 8){
+	if(round < 5){
 		return true;
 	}
 	return false;
 }
 //寻怪奔走状态：刺客二次隐身可至
 bool Rule_0_1(PUnit& hero){
+	return false;
 	if(hero.typeId != 2 || hero.findBuff(0)){
 		return false;
 	}
-	if(!hero.canUseSkill(13)){
+	if(!canUseSkill(hero, 13)){
 		return false;
 	}
 	if(hero.mp < 60){
 		return false;
-	}
-	if(data->info->round < 50){
-		return true;
 	}
 	int round = ArriveTime(hero, FindHeroAtkPos(hero, data->target[rankHero(hero)]), hero.speed);
 	return false;
@@ -446,11 +458,12 @@ bool Rule_0_2(PUnit& hero){
 	if(hero.typeId != 2){
 		return false;
 	}
-	if(!hero.canUseSkill(17)){
+	if(!canUseSkill(hero, 17)){
 		return false;
 	}
 	Pos pos = FindHeroAtkPos(hero, data->target[rankHero(hero)]);
-	if(abs(data->map->height[hero.pos.x][hero.pos.y] - data->map->height[pos.x][pos.y]) >= 2){
+	if(abs(data->map->height[hero.pos.x][hero.pos.y] - data->map->height[pos.x][pos.y]) >= 2
+		&& dis2(hero.pos, pos) <= 81){
 		return true;
 	}
 	return false;
@@ -468,7 +481,7 @@ bool Rule_1_0(PUnit& hero){
 	if(hero.findBuff(0)){
 		return false;
 	}
-	if(!hero.canUseSkill(13)){
+	if(!canUseSkill(hero, 13)){
 		return false;
 	}
 	return true;
@@ -505,6 +518,7 @@ bool Rule_1_1(PUnit& hero){
 }
 //视野看到目标状态:刺客隐身即将结束，直接进攻
 bool Rule_1_2(PUnit& hero){
+	return false;
 	if(hero.typeId != 2 && !hero.findBuff(0)){
 		return false;
 	}
@@ -543,7 +557,7 @@ bool Rule_2_0(PUnit& hero){
 }
 //遭遇对方英雄状态：能Blink
 bool Rule_2_1(PUnit& hero){
-	if(hero.typeId == 2 && hero.canUseSkill(17)){
+	if(hero.typeId == 2 && canUseSkill(hero, 17)){
 		return true;
 	}
 	return false;
@@ -607,7 +621,7 @@ bool Rule_9_0(PUnit& hero){
 
 //濒死状态:能Blink
 bool Rule_10_0(PUnit& hero){
-	if(hero.canUseSkill(17)){
+	if(canUseSkill(hero, 17)){
 		return true;
 	}
 	return false;
@@ -648,9 +662,26 @@ void Action_0_3(PUnit& hero, PCommand* cmd){
 	if(LevelUp(hero, cmd)) return;
 	Operation op;
 	op.id = hero.id;
-	op.type = "Move";
 	findShortestPath(*data->map, hero.pos, FindHeroWaitPos(hero, data->target[rankHero(hero)]), 
 		data->block, op.targets);
+	if(op.targets.size() == 1){
+		if(canUseSkill(hero, 17)){
+			for(int i = -9;i <=9;i++)
+				for(int j = -9;j <= 9;j++){
+					if(i*i+j*j <= 81){
+						Pos pos(hero.pos.x + i, hero.pos.y + j);
+						if(pos.x >=0 && pos.y >= 0 && data->map->height[pos.x][pos.y] == 0){
+							op.typeId = 17;
+							op.targets.push_back(pos);
+							cmd->cmds.push_back(op);
+							data->already[rankHero(hero)] = true;
+							return;
+						}
+					}
+				}
+		}
+	}
+	op.type = "Move";
 	cmd->cmds.push_back(op);
 	data->already[rankHero(hero)] = true;
 	Pos tmp = FindHeroWaitPos(hero, data->target[rankHero(hero)]);
@@ -765,7 +796,7 @@ void Action_2_2(PUnit& hero, PCommand* cmd){
 		data->already[rankHero(hero)] = true;
 		return;
 	}
-	if(hero.canUseSkill(13)){
+	if(canUseSkill(hero, 13)){
 		op.typeId = 13;
 		cmd->cmds.push_back(op);
 		data->already[rankHero(hero)] = true;
@@ -792,13 +823,35 @@ void Action_3_0(PUnit& hero, PCommand* cmd){
 //Action_4_0:
 void Action_4_0(PUnit& hero, PCommand* cmd){
 	if(LevelUp(hero, cmd)) return;
-	if(data->towerLeft_Enemy == 2){
-		data->target[rankHero(hero)] = data->enemys[1];
+	if(data->enemysRating[1] != 2000){
 		data->enemysRating[1] = 0;
 	}
 	else{
-		data->target[rankHero(hero)] = data->enemys[0];
 		data->enemysRating[0] = 0;
+	}
+	UpdateTarget(hero);
+	if(data->enemysRating[1] == 2000){
+		int num = 0;
+		for(int i = 0;i < data->myHeros.size();i++){
+			if(data->myHeros[i].findBuff("Reviving")){
+				num++;
+			}
+		}
+		if(num > 0){
+			if(canUseSkill(hero, 13)){
+				Operation op;
+				op.id = hero.id;
+				op.typeId = 13;
+				cmd->cmds.push_back(op);
+				return;
+			}
+			Operation op;
+			op.id = hero.id;
+			op.type = "Move";
+			findShortestPath(*data->map, hero.pos, data->spring, data->block, op.targets);
+			cmd->cmds.push_back(op);
+			return;
+		}
 	}
 //	Action_0_3(hero, cmd);
 	Operation op;
@@ -807,7 +860,7 @@ void Action_4_0(PUnit& hero, PCommand* cmd){
 	int dx[] = {-3,-1,0,1,3};
 	int dy[] = {-10,-11,-11,-11,-10};
 	Pos pos;
-	if(data->towerLeft_Enemy == 2){
+	if(data->enemysRating[1] != 2000){
 		pos.x = data->target[rankHero(hero)].pos.x + dx[rankHero(hero)];
 		pos.y = data->target[rankHero(hero)].pos.y + dy[rankHero(hero)];
 	}
@@ -829,7 +882,7 @@ void Action_5_0(PUnit& hero, PCommand* cmd){
 //Action_6_0:
 void Action_6_0(PUnit& hero, PCommand* cmd){
 	if(dis2(hero.pos, data->target[rankHero(hero)].pos) > data->target[rankHero(hero)].range){
-		if(!hero.findBuff(0) && hero.canUseSkill(13)){
+		if(!hero.findBuff(0) && canUseSkill(hero, 13)){
 			Operation op;
 			op.id = hero.id;
 			op.typeId = 13;
@@ -857,9 +910,51 @@ void Action_6_0(PUnit& hero, PCommand* cmd){
 
 //Action_7_0:
 void Action_7_0(PUnit& hero, PCommand* cmd){
-	data->towerLeft_Enemy -= 1;
-	data->enemysRating[rankEnemy(data->target[rankHero(hero)])] = 1000;
+	data->enemysRating[rankEnemy(data->target[rankHero(hero)])] = 2000;
 	data->target[rankHero(hero)] = PUnit(0,-1,-1,-1,-1,-1);
+	data->state[rankHero(hero)] = 0;
+	if(data->target[rankHero(hero)].id == data->enemys[1].id){
+		int num = 0;
+		for(int i = 0;i < data->myHeros.size();i++){
+			if(data->myHeros[i].findBuff("Reviving") || data->myHeros[i].hp < 100){
+				num++;
+			}
+		}
+		if(num >= 2){
+			if(canUseSkill(hero, 17)){
+				Operation op;
+				op.id = hero.id;
+				Pos pos = hero.pos;
+				for(int i = -9;i <= 9;i++){
+					for(int j = -9;j <= 9;j++){
+						if(i*i+j*j <= 81){
+							Pos tmp(hero.pos.x+i, hero.pos.y+j);
+							if(data->map->height[tmp.x][tmp.y] == 0 && dis2(tmp, data->spring) < dis2(pos, data->spring)){
+								pos = tmp;
+							}
+						}
+					}
+				}
+				op.typeId = 17;
+				op.targets.push_back(pos);
+				cmd->cmds.push_back(op);
+				return;
+			}
+			if(canUseSkill(hero, 13)){
+				Operation op;
+				op.id = hero.id;
+				op.typeId = 13;
+				cmd->cmds.push_back(op);
+				return;
+			}
+			Operation op;
+			op.id = hero.id;
+			op.type = "Move";
+			findShortestPath(*data->map, hero.pos, data->spring, data->block, op.targets);
+			cmd->cmds.push_back(op);
+			return;
+		}
+	}
 	UpdateUnit(data->target[rankHero(hero)]);
 	UpdateState(hero);
 	UpdateTarget(hero);
@@ -994,6 +1089,7 @@ void Init(){
 
 	for(int i = 0;i < 5;i++){
 		data->target.push_back(PUnit(0,-1,-1,-1,-1,-1));
+		cout << data->target[i].id << endl;
 	}
 
 	for(int i = 0;i < 5;i++){
@@ -1093,6 +1189,11 @@ int Evaluation(vector<PUnit>& heros, PUnit& enemy){
 		result = 1000;
 	result += arrive * 10;
 	result *= data->enemysRating[rankEnemy(enemy)];
+	for(int i = 0;i < rankHero(heros[0]);i++){
+		if(data->target[i].id == enemy.id){
+			result *= 0.5;
+		}
+	}
 	return result;
 }
 //选取敌人
@@ -1109,6 +1210,9 @@ PUnit ChooseEnemy(PUnit& hero){
 			min = tmp;
 			result = data->enemys[i];
 		}
+	}
+	if(min == 1000){
+		return data->enemys[28+data->info->camp];
 	}
 	return result;
 }
@@ -1177,7 +1281,7 @@ int ArriveTime(PUnit& hero, Pos pos, int speed){
 void FindEnemysAble(PUnit& hero, vector<PUnit>& enemys){
 	enemys.clear();
 	for(int i = 0;i < data->enemysSeen.size();i++){
-		if(dis2(data->enemysSeen[i].pos, hero.pos) < data->enemysSeen[i].range){
+		if(dis2(data->enemysSeen[i].pos, hero.pos) < data->enemysSeen[i].range && !data->enemysSeen[i].findBuff("Reviving")){
 			enemys.push_back(data->enemysSeen[i]);
 		}
 	}
@@ -1214,38 +1318,56 @@ Pos FindHeroAtkPos(PUnit& hero, PUnit& enemy){
 Pos FindHeroWaitPos(PUnit& hero, PUnit& enemy){
 	int direction = FindDirection(hero, enemy);
 	if(direction == 0){
-		int dx[] = {-1,1,3,3,3};
-		int dy[] = {3,3,3,1,-1};
+		int dx[] = {-1,1,3,4,4};
+		int dy[] = {4,4,4,1,-1};
 		int index = rankHero(hero);
 		return Pos(enemy.pos.x+dx[index],enemy.pos.y+dy[index]);
 	}
 	else if(direction == 1){
-		int dx[] = {-1,1,-3,-3,-3};
-		int dy[] = {3,3,3,1,-1};
+		int dx[] = {-1,1,-3,-4,-4};
+		int dy[] = {4,4,4,1,-1};
 		int index = rankHero(hero);
 		return Pos(enemy.pos.x+dx[index],enemy.pos.y+dy[index]);
 	}
 	else if(direction == 2){
-		int dx[] = {-3,-3,-1,-3,1};
-		int dy[] = {1,-1,-3,-3,-3};
+		int dx[] = {-4,-4,-2,-1,1};
+		int dy[] = {1,-1,-3,-4,-4};
 		int index = rankHero(hero);
 		return Pos(enemy.pos.x+dx[index],enemy.pos.y+dy[index]);
 	}
 	else{
-		int dx[] = {3,1,3,-1,3};
-		int dy[] = {1,-3,-1,-3,-3};
+		int dx[] = {4,2,4,-1,1};
+		int dy[] = {1,-3,-1,-4,-4};
 		int index = rankHero(hero);
 		return Pos(enemy.pos.x+dx[index],enemy.pos.y+dy[index]);
 	}
 }
 
 int FindDirection(PUnit& hero, PUnit& enemy){
-	if(enemy.pos.x < hero.pos.x && enemy.pos.y < hero.pos.y)
+	Pos pos;
+	for(int i = 0;i < data->myHeros.size();i++){
+		pos.x += data->myHeros[i].pos.x;
+		pos.y += data->myHeros[i].pos.y;
+	}
+	pos.x /= data->myHeros.size();
+	pos.y /= data->myHeros.size();
+	if(enemy.pos.x < pos.x && enemy.pos.y < pos.y)
 		return 0;
-	else if(enemy.pos.x >= hero.pos.x && enemy.pos.y < hero.pos.y)
+	else if(enemy.pos.x >= pos.x && enemy.pos.y < pos.y)
 		return 1;
-	else if(enemy.pos.x >= hero.pos.x && enemy.pos.y >= hero.pos.y)
+	else if(enemy.pos.x >= pos.x && enemy.pos.y >= pos.y)
 		return 2;
 	else
 		return 3;
+}
+
+bool canUseSkill(PUnit& hero, int typeId) //判断单位目前是否可以使用某种技能，_typeId为技能类型编号
+{
+	const PSkill* skill = hero.findSkill(typeId);
+	if(skill->level < 0){
+		return false;
+	}
+	if(skill->cd == 0){
+		return true;
+	}
 }
