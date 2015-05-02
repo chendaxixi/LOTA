@@ -154,6 +154,8 @@ void UpdateTarget(PUnit& hero);
 bool LevelUp(PUnit& hero, PCommand* cmd);
 int FindDirection(PUnit& hero, PUnit& enemy);
 bool canUseSkill(PUnit& hero, int typeId);
+bool BeginAttack(vector<PUnit>& heros, PUnit& enemy);
+void UpdateReviving();
 
 //全局变量
 Update updates[UpdateCount] = {Update_0, Update_1, Update_2, Update_3, Update_4, Update_5, Update_6, Update_7, Update_8, Update_9, Update_10};
@@ -204,9 +206,15 @@ ofstream output("result.txt");
 
 void player_ai(const PMap &map, const PPlayerInfo &info, PCommand &cmd)
 {
+	time_t t1 = clock();
 	data->SetData(&map, &info);
 	output << "round:" << data->info->round << endl;
 	Interpert_Input(&cmd);
+	time_t t2 = clock();
+	output << "\nTime:" << (double)(t2-t1)/CLOCKS_PER_SEC * 1000 << endl;
+	if((double)(t2-t1)/CLOCKS_PER_SEC * 1000 > 100){
+		cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
+	}
 }
 
 void Interpert_Input(PCommand* cmd){
@@ -247,6 +255,7 @@ void UpdateData(PCommand* cmd){
 	}
 
 	UpdateEnemys();
+	UpdateReviving();
 	data->blocksAdd = 0;
 	for(int i = 0;i < data->enemys.size();i++){
 //		if(data->enemys[i].max_hp > 0){
@@ -275,24 +284,20 @@ void UpdateData(PCommand* cmd){
 			UpdateUnit(data->towers[i]);
 		}
 	}
-
-	output << "revivingTIMEsize:" << data->revivingTIME.size() << " " << data->enemys.size() << endl;
-	for(int i = 0;i < data->enemys.size();i++){
-		if(data->revivingTIME[i] > 0){
-			data->revivingTIME[i]--;
-		}
-	}
 	
 	for(int i = 0;i < data->myHeros.size();i++){
 		if(data->myHeros[i].findBuff("Reviving")){
 			data->state[i] = 0;
 		}
 		UpdateUnit(data->target[i]);
-		UpdateState(data->myHeros[i]);
 		UpdateTarget(data->myHeros[i]);
 		if(data->HideTIME[i] > 0){
 			data->HideTIME[i]--;
 		}
+	}
+	for(int i = 0;i < data->myHeros.size();i++){
+		if(!data->myHeros[i].findBuff("Reviving"))
+			UpdateState(data->myHeros[i]);
 	}
 }
 //更新State
@@ -306,6 +311,9 @@ void UpdateState(PUnit& hero){
 }
 //Rule-Action规则对应
 void Rule_Action(PUnit& hero, PCommand* cmd){
+	if(hero.findBuff("Reviving")){
+		return;
+	}
 	int state = data->state[rankHero(hero)];
 	for(int i = 0;i < ruleCount[state];i++)
 		if(rules[state][ruleRank[state][i]](hero)){
@@ -332,7 +340,7 @@ bool Update_1(PUnit& hero){
 }
 //状态：遭遇对方英雄状态
 bool Update_2(PUnit& hero){
-	if(hero.findBuff(0)){
+	if(hero.findBuff("Hided")){
 		return false;
 	}
 	for(int i = 3;i < 8;i++){
@@ -351,17 +359,18 @@ bool Update_3(PUnit& hero){
 	if(isSeen(data->target[index]) && dis2(data->target[index].pos, hero.pos) <= hero.range){
 		return true;
 	}
+	return false;
 }
 //状态：推塔行进状态
 bool Update_4(PUnit& hero){
 	int index = rankHero(hero);
-	if(data->state[index] == 4 && data->target[index].typeId == 3 
-		&& !(dis2(data->target[index].pos, hero.pos) <= hero.view && dis2(data->target[index].pos, hero.pos) > data->target[index].range)){
+	for(int i = 0;i < data->myHeros.size();i++){
+		if(data->state[i] >= 4 && data->state[i] <= 6)
 			return true;
 	}
 	bool flag = true;
 	for(int i = 0;i < data->myHeros.size();i++){
-		if(data->myHeros[i].level < 2 || data->myHeros[i].hp < 105){
+		if(data->myHeros[i].level < 2 || data->myHeros[i].hp < 50){
 			flag = false;
 			break;
 		}
@@ -374,7 +383,23 @@ bool Update_5(PUnit& hero){
 	if(data->state[index] == 5){
 		return true;
 	}
-	if(data->state[index] == 4 && dis2(data->target[index].pos, hero.pos) <= hero.view && dis2(data->target[index].pos, hero.pos) > data->target[index].range){
+	if(data->target[rankHero(hero)].typeId != 3) 
+		return false;
+//	if(data->state[index] == 4 && dis2(data->target[index].pos, hero.pos) <= hero.view && dis2(data->target[index].pos, hero.pos) > data->target[index].range){
+//		return true;
+//	}
+	int dx[] = {-10,-9,-8,-7,-6};
+	int dy[] = {-10,-11,-12,-13,-13};
+	int xx[] = {-10,-9,-8,-7,-6};
+	int yy[] = {10,11,12,13,13};
+	Pos pos;
+	if(data->enemysRating[1] != 2000){
+		pos = Pos(data->target[rankHero(hero)].pos.x + dx[rankHero(hero)], data->target[rankHero(hero)].pos.y + dy[rankHero(hero)]);
+	}
+	else{
+		pos = Pos(data->target[rankHero(hero)].pos.x + xx[rankHero(hero)], data->target[rankHero(hero)].pos.y + yy[rankHero(hero)]);
+	}
+	if(data->state[index] == 4 && ArriveTime(hero, pos, hero.speed) == 0){
 		return true;
 	}
 	return false;
@@ -390,7 +415,7 @@ bool Update_6(PUnit& hero){
 			num++;
 		}
 	}
-	if(num <= 2){
+	if(num <= 2 && (data->state[rankHero(hero)] == 5)){
 		return true;
 	}
 	return false;
@@ -426,13 +451,11 @@ bool Rule_0_0(PUnit& hero){
 	if(hero.typeId != 2 || hero.findBuff(0)){
 		return false;
 	}
-	output << "!!!!!!!!!!!" << data->info->round << " " << hero.findBuff(0) << endl;
 	if(!canUseSkill(hero, 13)){
 		return false;
 	}
-	double HideSpeed[] = {1.41, 1.58, 1.73};
 	int round = ArriveTime(hero, FindHeroAtkPos(hero, data->target[rankHero(hero)]), 
-		hero.speed * HideSpeed[data->levelUP[rankHero(hero)]-1]);
+		hero.speed);
 	if(round < 5){
 		return true;
 	}
@@ -478,7 +501,7 @@ bool Rule_1_0(PUnit& hero){
 	if(hero.typeId != 2){
 		return false;
 	}
-	if(hero.findBuff(0)){
+	if(hero.findBuff("Hided")){
 		return false;
 	}
 	if(!canUseSkill(hero, 13)){
@@ -494,9 +517,10 @@ bool Rule_1_1(PUnit& hero){
 	int num = 0;
 	int index = rankHero(hero);
 	for(int i = 0;i < data->myHeros.size();i++){
+		if(!data->myHeros[i].findBuff("Reviving"))
 		if(data->target[i].id == data->target[index].id){
 			int round;
-			if(data->myHeros[i].findBuff(0)){
+			if(data->myHeros[i].findBuff("Hided")){
 				round = ArriveTime(data->myHeros[i], FindHeroAtkPos(data->myHeros[i], data->target[i]), 
 					data->myHeros[i].speed);
 			}
@@ -515,6 +539,7 @@ bool Rule_1_1(PUnit& hero){
 	if(num >= 2){
 		return true;
 	}
+	return false;
 }
 //视野看到目标状态:刺客隐身即将结束，直接进攻
 bool Rule_1_2(PUnit& hero){
@@ -534,6 +559,7 @@ bool Rule_1_3(PUnit& hero){
 	}
 	int num = 0;
 	for(int i = 0;i < data->myHeros.size();i++){
+		if(!data->myHeros[i].findBuff("Reviving"))
 		if(data->target[i].id == data->target[rankHero(hero)].id){
 			if(ArriveTime(data->myHeros[i], FindHeroAtkPos(data->myHeros[i], data->target[i]),
 				data->myHeros[i].speed) <= 4){
@@ -659,6 +685,7 @@ void Action_0_2(PUnit& hero, PCommand* cmd){
 }
 //Action_0_3:
 void Action_0_3(PUnit& hero, PCommand* cmd){
+	if(data->already[rankHero(hero)]) return;
 	if(LevelUp(hero, cmd)) return;
 	Operation op;
 	op.id = hero.id;
@@ -670,7 +697,7 @@ void Action_0_3(PUnit& hero, PCommand* cmd){
 				for(int j = -9;j <= 9;j++){
 					if(i*i+j*j <= 81){
 						Pos pos(hero.pos.x + i, hero.pos.y + j);
-						if(pos.x >=0 && pos.y >= 0 && data->map->height[pos.x][pos.y] == 0){
+						if(pos.x >=0 && pos.y >= 0 && data->map->height[pos.x][pos.y] <= 2){
 							op.typeId = 17;
 							op.targets.push_back(pos);
 							cmd->cmds.push_back(op);
@@ -701,18 +728,17 @@ void Action_1_0(PUnit& hero, PCommand* cmd){
 //Action_1_1:
 void Action_1_1(PUnit& hero, PCommand* cmd){
 	if(LevelUp(hero, cmd)) return;
-	bool flag = true;
+	vector<PUnit> heros;
 	for(int i = 0;i < data->myHeros.size();i++){
 		if(data->target[i].id == data->target[rankHero(hero)].id){
 			int round = ArriveTime(data->myHeros[i], 
 				FindHeroWaitPos(data->myHeros[i], data->target[i]), data->myHeros[i].speed);
-			if(round != 0){
-				flag = false;
-				Action_0_3(hero, cmd);
+			if(round == 0){
+				heros.push_back(data->myHeros[i]);
 			}
 		}
 	}
-	if(flag){
+	if(BeginAttack(heros, data->target[rankHero(hero)])){
 		Operation op;
 		op.id = hero.id;
 		op.type = "Move";
@@ -720,6 +746,9 @@ void Action_1_1(PUnit& hero, PCommand* cmd){
 			data->block, op.targets);
 		cmd->cmds.push_back(op);
 		data->already[rankHero(hero)] = true;
+	}
+	else{
+		Action_0_3(hero, cmd);
 	}
 }
 //Action_1_2:
@@ -856,20 +885,22 @@ void Action_4_0(PUnit& hero, PCommand* cmd){
 //	Action_0_3(hero, cmd);
 	Operation op;
 	op.id = hero.id;
-	op.type = "Move";
-	int dx[] = {-3,-1,0,1,3};
-	int dy[] = {-10,-11,-11,-11,-10};
+	int dx[] = {-10,-9,-8,-7,-6};
+	int dy[] = {-10,-11,-12,-13,-13};
+	int xx[] = {-10,-9,-8,-7,-6};
+	int yy[] = {10,11,12,13,13};
 	Pos pos;
 	if(data->enemysRating[1] != 2000){
 		pos.x = data->target[rankHero(hero)].pos.x + dx[rankHero(hero)];
 		pos.y = data->target[rankHero(hero)].pos.y + dy[rankHero(hero)];
 	}
 	else{
-		pos.x = data->target[rankHero(hero)].pos.x - dx[rankHero(hero)];
-		pos.y = data->target[rankHero(hero)].pos.y - dy[rankHero(hero)];
+		pos.x = data->target[rankHero(hero)].pos.x + xx[rankHero(hero)];
+		pos.y = data->target[rankHero(hero)].pos.y + yy[rankHero(hero)];
 	}
 	findShortestPath(*data->map, hero.pos, pos, 
 		data->block, op.targets);
+	op.type = "Move";
 	cmd->cmds.push_back(op);
 	data->already[rankHero(hero)] = true;
 }
@@ -882,13 +913,22 @@ void Action_5_0(PUnit& hero, PCommand* cmd){
 //Action_6_0:
 void Action_6_0(PUnit& hero, PCommand* cmd){
 	if(dis2(hero.pos, data->target[rankHero(hero)].pos) > data->target[rankHero(hero)].range){
-		if(!hero.findBuff(0) && canUseSkill(hero, 13)){
+		if(!hero.findBuff("Hided")){
+			for(int i = 0;i < data->myHeros.size();i++)
+				if(data->target[i].id == data->target[rankHero(hero)].id && data->state[i] == 6 
+					&& !canUseSkill(data->myHeros[i], 13) && !data->myHeros[i].findBuff("Hided"))
+					return;
 			Operation op;
 			op.id = hero.id;
 			op.typeId = 13;
 			cmd->cmds.push_back(op);
+			data->already[rankHero(hero)] = true;
+			return;
 		}
 		else{
+			for(int i = 0;i < data->myHeros.size();i++)
+				if(data->target[i].id == data->target[rankHero(hero)].id && data->state[i] == 6 && !data->myHeros[i].findBuff("Hided"))
+					return;
 			Operation op;
 			op.id = hero.id;
 			op.type = "Move";
@@ -1114,6 +1154,7 @@ int rankHero(PUnit& hero){
 		if(data->myHeros[i].id == hero.id){
 			return i;
 		}
+	return 0;
 }
 //敌人下标
 int rankEnemy(PUnit& enemy){
@@ -1121,6 +1162,7 @@ int rankEnemy(PUnit& enemy){
 		if(data->enemys[i].id == enemy.id){
 			return i;
 		}
+	return 0;
 }
 //更新Enemys
 void UpdateEnemys(){
@@ -1193,6 +1235,9 @@ int Evaluation(vector<PUnit>& heros, PUnit& enemy){
 		if(data->target[i].id == enemy.id){
 			result *= 0.5;
 		}
+	}
+	if(enemy.typeId == 6 || enemy.typeId == 10){
+		output << "Evulation: id:" << enemy.id << " Rating:" << data->enemysRating[rankEnemy(enemy)] << " result:" << result << endl;
 	}
 	return result;
 }
@@ -1313,6 +1358,7 @@ Pos FindHeroAtkPos(PUnit& hero, PUnit& enemy){
 		int index = rankHero(hero);
 		return Pos(enemy.pos.x+dx[index],enemy.pos.y+dy[index]);
 	}
+	return enemy.pos;
 }
 
 Pos FindHeroWaitPos(PUnit& hero, PUnit& enemy){
@@ -1341,6 +1387,7 @@ Pos FindHeroWaitPos(PUnit& hero, PUnit& enemy){
 		int index = rankHero(hero);
 		return Pos(enemy.pos.x+dx[index],enemy.pos.y+dy[index]);
 	}
+	return enemy.pos;
 }
 
 int FindDirection(PUnit& hero, PUnit& enemy){
@@ -1359,6 +1406,7 @@ int FindDirection(PUnit& hero, PUnit& enemy){
 		return 2;
 	else
 		return 3;
+	return 0;
 }
 
 bool canUseSkill(PUnit& hero, int typeId) //判断单位目前是否可以使用某种技能，_typeId为技能类型编号
@@ -1369,5 +1417,34 @@ bool canUseSkill(PUnit& hero, int typeId) //判断单位目前是否可以使用某种技能，_t
 	}
 	if(skill->cd == 0){
 		return true;
+	}
+	return false;
+}
+
+bool BeginAttack(vector<PUnit>& heros, PUnit& enemy){
+	if(heros.size() == 0) return false;
+	if(enemy.typeId == 10){
+		if(heros[0].level == 0 && heros.size() < 5)
+			return false;
+		if(heros[0].level < 3 && heros.size() < 4)
+			return false;
+		return true;
+	}
+	if(enemy.typeId >= 6 && enemy.typeId != 10){
+		if(heros.size() > 1)
+			return true;
+		return false;
+	}
+	return false;
+}
+
+void UpdateReviving(){
+	for(int i = 0;i < data->enemys.size();i++){
+		if(isSeen(data->enemys[i]) && !data->enemys[i].findBuff("Reviving")){
+			data->revivingTIME[i] = 0;
+		}
+		if(data->revivingTIME[i] > 0){
+			data->revivingTIME[i]--;
+		}
 	}
 }
