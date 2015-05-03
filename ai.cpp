@@ -388,16 +388,28 @@ bool Update_5(PUnit& hero){
 //	if(data->state[index] == 4 && dis2(data->target[index].pos, hero.pos) <= hero.view && dis2(data->target[index].pos, hero.pos) > data->target[index].range){
 //		return true;
 //	}
-	int dx[] = {-10,-9,-8,-7,-6};
-	int dy[] = {-10,-11,-12,-13,-13};
-	int xx[] = {-10,-9,-8,-7,-6};
-	int yy[] = {10,11,12,13,13};
+	int dx[] = {-15,-16,-17,-18,-19};
+	int dy[] = {-4,-5,-6,-7,-8};
+	int xx[] = {16,16,16,16,16};
+	int yy[] = {1,0,-1,-2,-3};
+	int rate = 1;
+	if(data->info->round == 1){
+		rate = -1;
+	}
 	Pos pos;
 	if(data->enemysRating[1] != 2000){
-		pos = Pos(data->target[rankHero(hero)].pos.x + dx[rankHero(hero)], data->target[rankHero(hero)].pos.y + dy[rankHero(hero)]);
+		pos.x = data->target[rankHero(hero)].pos.x + dx[rankHero(hero)] * rate;
+		pos.y = data->target[rankHero(hero)].pos.y + dy[rankHero(hero)] * rate;
 	}
 	else{
-		pos = Pos(data->target[rankHero(hero)].pos.x + xx[rankHero(hero)], data->target[rankHero(hero)].pos.y + yy[rankHero(hero)]);
+		if(dis2(hero.pos, data->spring) <= 4900){
+			pos.x = data->enemys[1].pos.x + dx[rankHero(hero)] * rate;
+			pos.y = data->enemys[1].pos.y + dy[rankHero(hero)] * rate;
+		}
+		else{
+			pos.x = data->enemys[1].pos.x + xx[rankHero(hero)] * rate;
+			pos.y = data->enemys[1].pos.y + yy[rankHero(hero)] * rate;
+		}
 	}
 	if(data->state[index] == 4 && ArriveTime(hero, pos, hero.speed) == 0){
 		return true;
@@ -415,7 +427,7 @@ bool Update_6(PUnit& hero){
 			num++;
 		}
 	}
-	if(num <= 2 && (data->state[rankHero(hero)] == 5)){
+	if(num <= 1 && (data->state[rankHero(hero)] == 5)){
 		return true;
 	}
 	return false;
@@ -885,18 +897,28 @@ void Action_4_0(PUnit& hero, PCommand* cmd){
 //	Action_0_3(hero, cmd);
 	Operation op;
 	op.id = hero.id;
-	int dx[] = {-10,-9,-8,-7,-6};
-	int dy[] = {-10,-11,-12,-13,-13};
-	int xx[] = {-10,-9,-8,-7,-6};
-	int yy[] = {10,11,12,13,13};
+	int dx[] = {-15,-16,-17,-18,-19};
+	int dy[] = {-4,-5,-6,-7,-8};
+	int xx[] = {16,16,16,16,16};
+	int yy[] = {1,0,-1,-2,-3};
+	int rate = 1;
+	if(data->info->round == 1){
+		rate = -1;
+	}
 	Pos pos;
 	if(data->enemysRating[1] != 2000){
-		pos.x = data->target[rankHero(hero)].pos.x + dx[rankHero(hero)];
-		pos.y = data->target[rankHero(hero)].pos.y + dy[rankHero(hero)];
+		pos.x = data->target[rankHero(hero)].pos.x + dx[rankHero(hero)] * rate;
+		pos.y = data->target[rankHero(hero)].pos.y + dy[rankHero(hero)] * rate;
 	}
 	else{
-		pos.x = data->target[rankHero(hero)].pos.x + xx[rankHero(hero)];
-		pos.y = data->target[rankHero(hero)].pos.y + yy[rankHero(hero)];
+		if(dis2(hero.pos, data->spring) <= 4900){
+			pos.x = data->enemys[1].pos.x + dx[rankHero(hero)] * rate;
+			pos.y = data->enemys[1].pos.y + dy[rankHero(hero)] * rate;
+		}
+		else{
+			pos.x = data->enemys[1].pos.x + xx[rankHero(hero)] * rate;
+			pos.y = data->enemys[1].pos.y + yy[rankHero(hero)] * rate;
+		}
 	}
 	findShortestPath(*data->map, hero.pos, pos, 
 		data->block, op.targets);
@@ -1104,8 +1126,8 @@ void Init(){
 		data->enemysInit[i].max_hp = 0;
 		data->enemysInit[i].hp = 0;
 	}
-	data->enemysRating[8] = 1;
-	data->enemysRating[9] = 1;
+	data->enemysRating[8+data->info->camp * 4] = 1;
+	data->enemysRating[9+data->info->camp * 4] = 1;
 	data->enemysRating[28+data->info->camp] = 0;
 	output << "Init: Size:" << data->enemysInit.size() << " " << data->enemysRating.size() << " " << data->revivingTIME.size() << endl;
 //	data->enemysInit[0].hp = 1000;
@@ -1239,6 +1261,9 @@ int Evaluation(vector<PUnit>& heros, PUnit& enemy){
 	if(enemy.typeId == 6 || enemy.typeId == 10){
 		output << "Evulation: id:" << enemy.id << " Rating:" << data->enemysRating[rankEnemy(enemy)] << " result:" << result << endl;
 	}
+	if(data->target[rankHero(heros[0])].id == enemy.id && enemy.hp > 0 && !enemy.findBuff("Reviving")){
+		return 0;
+	}
 	return result;
 }
 //Ñ¡È¡µÐÈË
@@ -1276,7 +1301,9 @@ bool isTargetDead(PUnit& hero){
 	if(data->target[index].typeId == 3){
 		bool flag = false;
 		for(int i = 0;i < data->myHeros.size();i++){
-			if((dis2(data->target[index].pos, data->myHeros[i].pos) <= data->myHeros[i].view) && !data->myHeros[i].findBuff("Reviving")){
+			if((dis2(data->target[index].pos, data->myHeros[i].pos) <= data->myHeros[i].view) 
+				&& (data->map->height[data->target[index].pos.x][data->target[index].pos.y] - data->map->height[hero.pos.x][hero.pos.y] < 2)
+				&& !data->myHeros[i].findBuff("Reviving")){
 				flag = true;
 				break;
 			}
