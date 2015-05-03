@@ -390,10 +390,10 @@ bool Update_5(PUnit& hero){
 //	}
 	int dx[] = {-15,-16,-17,-18,-19};
 	int dy[] = {-4,-5,-6,-7,-8};
-	int xx[] = {16,16,16,16,16};
-	int yy[] = {1,0,-1,-2,-3};
+	int xx[] = {-10,-9,-8,-7,-6};
+	int yy[] = {10,11,12,13,13};
 	int rate = 1;
-	if(data->info->round == 1){
+	if(data->info->camp == 1){
 		rate = -1;
 	}
 	Pos pos;
@@ -402,14 +402,8 @@ bool Update_5(PUnit& hero){
 		pos.y = data->target[rankHero(hero)].pos.y + dy[rankHero(hero)] * rate;
 	}
 	else{
-		if(dis2(hero.pos, data->spring) <= 4900){
-			pos.x = data->enemys[1].pos.x + dx[rankHero(hero)] * rate;
-			pos.y = data->enemys[1].pos.y + dy[rankHero(hero)] * rate;
-		}
-		else{
-			pos.x = data->enemys[1].pos.x + xx[rankHero(hero)] * rate;
-			pos.y = data->enemys[1].pos.y + yy[rankHero(hero)] * rate;
-		}
+		pos.x = data->enemys[0].pos.x + xx[rankHero(hero)] * rate;
+		pos.y = data->enemys[0].pos.y + yy[rankHero(hero)] * rate;
 	}
 	if(data->state[index] == 4 && ArriveTime(hero, pos, hero.speed) == 0){
 		return true;
@@ -899,10 +893,10 @@ void Action_4_0(PUnit& hero, PCommand* cmd){
 	op.id = hero.id;
 	int dx[] = {-15,-16,-17,-18,-19};
 	int dy[] = {-4,-5,-6,-7,-8};
-	int xx[] = {16,16,16,16,16};
-	int yy[] = {1,0,-1,-2,-3};
+	int xx[] = {-10,-9,-8,-7,-6};
+	int yy[] = {10,11,12,13,13};
 	int rate = 1;
-	if(data->info->round == 1){
+	if(data->info->camp == 1){
 		rate = -1;
 	}
 	Pos pos;
@@ -916,8 +910,8 @@ void Action_4_0(PUnit& hero, PCommand* cmd){
 			pos.y = data->enemys[1].pos.y + dy[rankHero(hero)] * rate;
 		}
 		else{
-			pos.x = data->enemys[1].pos.x + xx[rankHero(hero)] * rate;
-			pos.y = data->enemys[1].pos.y + yy[rankHero(hero)] * rate;
+			pos.x = data->enemys[0].pos.x + xx[rankHero(hero)] * rate;
+			pos.y = data->enemys[0].pos.y + yy[rankHero(hero)] * rate;
 		}
 	}
 	findShortestPath(*data->map, hero.pos, pos, 
