@@ -182,7 +182,7 @@ void UpdateData(PCommand* cmd){
 		if(unit.camp == data->info->camp && unit.isHero()){
 			data->myHeros.push_back(unit);
 			if(unit.findBuff("Reviving")){
-				cout << data->info->round << " Yes\n";
+				output << data->info->round << " Yes\n";
 			}
 		}
 	}
@@ -318,7 +318,8 @@ bool Update_5(vector<PUnit>& heros){
 	if(data->target[0].typeId == 3){
 		bool flag = false;
 		for(int i = 0;i < heros.size();i++){
-			if((dis2(data->target[0].pos, heros[i].pos) <= heros[i].view) && !heros[i].findBuff("Reviving")){
+			if((dis2(data->target[0].pos, heros[i].pos) <= heros[i].view) && !heros[i].findBuff("Reviving")
+				&& (data->map->height[data->target[0].pos.x][data->target[0].pos.y] - data->map->height[heros[i].pos.x][heros[i].pos.y] < 2)){
 				flag = true;
 				break;
 			}
@@ -408,7 +409,16 @@ void Action_2_0(vector<PUnit>& heros, PCommand* cmd){
 				findShortestPathWithSymbols(*data->map, symbols, data->block, op.targets);
 			}
 			else*/
-				findShortestPath(*data->map, heros[i].pos, data->target[0].pos, data->block, op.targets);
+				if((data->target[0].typeId == 3) && data->enemysRating[1] == 2000){
+					if(dis2(heros[i].pos, data->spring) <= 3000){
+						findShortestPath(*data->map, heros[i].pos, data->enemys[1].pos, data->block, op.targets);
+					}
+					else{
+						findShortestPath(*data->map, heros[i].pos, data->target[0].pos, data->block, op.targets);
+					}
+				}
+				else
+					findShortestPath(*data->map, heros[i].pos, data->target[0].pos, data->block, op.targets);
 			output << "PathSize:" << op.targets.size() << " id:"<<  heros[i].id << endl;
 			if(op.targets.size() == 1){
 				data->enemysRating[rankEnemy(data->target[0])] = 1000;
@@ -441,7 +451,7 @@ bool Rule_2_3(vector<PUnit>& heros){
 //Action
 void Action_2_3(vector<PUnit>& heros, PCommand* cmd){
 	output << "RatingSize:" << data->enemysRating.size() << " need:" << 28+data->info->camp << endl;
-	data->enemysRating[28+data->info->camp] = 0;
+//	data->enemysRating[28+data->info->camp] = 1;
 	Action_2_0(heros, cmd);
 }
 
@@ -452,6 +462,14 @@ bool Rule_3_0(vector<PUnit>& heros){
 //Action
 void Action_3_0(vector<PUnit>& heros, PCommand* cmd){
 	output << "Action_3_0:Begin: HeroSize:" << heros.size() << " Target:" << data->target.size() << ":" << data->target[0].id << endl;
+	int num = 0;
+	for(int i = 0;i < heros.size();i++)
+		if(!data->already[rankHero(heros[i])])
+			if(dis2(data->target[0].pos, heros[i].pos) > heros[i].range)
+				num++;
+	if(data->target[0].typeId == 3)
+		num = 0;
+	if(num == 0){
 	for(int i = 0;i < heros.size();i++)
 		if(!data->already[rankHero(heros[i])]){
 			if(dis2(data->target[0].pos, heros[i].pos) <= heros[i].range){
@@ -484,12 +502,54 @@ void Action_3_0(vector<PUnit>& heros, PCommand* cmd){
 					findShortestPathWithSymbols(*data->map, symbols, data->block, op.targets);
 				}
 				else */
+				if((data->target[0].typeId == 3) && data->enemysRating[1] == 2000){
+					if(dis2(heros[i].pos, data->spring) <= 3000){
+						findShortestPath(*data->map, heros[i].pos, data->enemys[1].pos, data->block, op.targets);
+					}
+					else{
+						findShortestPath(*data->map, heros[i].pos, data->target[0].pos, data->block, op.targets);
+					}
+				}
+				else
+					findShortestPath(*data->map, heros[i].pos, data->target[0].pos, data->block, op.targets);
+				output << "Move: id" << heros[i].id << " Size:" << op.targets.size() << endl;
+				cmd->cmds.push_back(op);
+				data->already[rankHero(heros[i])] = true;				
+			}
+		}
+		return;
+	}
+	for(int i = 0;i < heros.size();i++)
+		if(!data->already[rankHero(heros[i])])
+			if(dis2(data->target[0].pos, heros[i].pos) > heros[i].range)
+			{
+				Operation op;
+				op.id = heros[i].id;
+				op.type = "Move";
+			/*	if((data->state == 4) && (data->towerLeft_Enemy == 1)){
+					output << "Symbols:" << data->symbols.size() << endl;
+					vector<Pos> symbols;
+					symbols.push_back(heros[i].pos);
+					for(int j = 0;j < data->symbols.size();j++)
+						symbols.push_back(data->symbols[j]);
+					symbols.push_back(Pos(data->target[0].pos.x-1,data->target[0].pos.y));
+					findShortestPathWithSymbols(*data->map, symbols, data->block, op.targets);
+				}
+				else */
+				if((data->target[0].typeId == 3) && data->enemysRating[1] == 2000){
+					if(dis2(heros[i].pos, data->spring) <= 3000){
+						findShortestPath(*data->map, heros[i].pos, data->enemys[1].pos, data->block, op.targets);
+					}
+					else{
+						findShortestPath(*data->map, heros[i].pos, data->target[0].pos, data->block, op.targets);
+					}
+				}
+				else
 					findShortestPath(*data->map, heros[i].pos, data->target[0].pos, data->block, op.targets);
 				output << "Move: id" << heros[i].id << " Size:" << op.targets.size() << endl;
 				cmd->cmds.push_back(op);
 				data->already[rankHero(heros[i])] = true;
 			}
-		}
 }
 
 //战斗状态：英雄
@@ -598,6 +658,7 @@ void Action_5_0(vector<PUnit>& heros, PCommand* cmd){
 		data->revivingTIME[index] = 2000;
 		if(typeId == 3){
 			data->towerLeft_Enemy -= 1;
+			data->enemysRating[1] = 2000;
 		}
 	}
 	else if(typeId < 8){
@@ -749,7 +810,7 @@ void Init(){
 		}
 	}
 	for(int i = 0;i < data->enemysInit.size();i++){
-		data->enemysRating.push_back(1);
+		data->enemysRating.push_back(1000);
 		data->revivingTIME.push_back(0);
 		PArg arg(2);
 		if(i < 2)
@@ -763,6 +824,9 @@ void Init(){
 		arg.val.push_back(0);
 		data->enemysInit[i].args.push_back(arg);
 	}
+	data->enemysRating[8+data->info->camp * 4] = 1;
+	data->enemysRating[9+data->info->camp * 4] = 1;
+	data->enemysRating[28+data->info->camp] = 0;
 	output << "Init: Size:" << data->enemysInit.size() << " " << data->enemysRating.size() << " " << data->revivingTIME.size() << endl;
 //	data->enemysInit[0].hp = 1000;
 //	data->enemysInit[1].hp = 1000;
@@ -775,7 +839,8 @@ void Init(){
 		output << "Forbidden:" << rankEnemy(enemy) << " Size:" << data->enemysRating.size() << endl;
 	}
 
-	data->symbols.push_back(Pos(22,68));
+	data->symbols.push_back(Pos(17,68));
+	data->symbols.push_back(Pos(44,70));
 	if(data->info->camp == 0){
 		data->spring = Player0_spring_pos[0];
 	}
@@ -880,6 +945,9 @@ int Evaluation(vector<PUnit>& heros, PUnit& enemy){
 		result = 1000;
 	result += arrive * 10;
 	result *= data->enemysRating[rankEnemy(enemy)];
+	if(data->target.size() > 0 && data->target[0].id == enemy.id && enemy.hp > 0 && !enemy.findBuff("Reviving")){
+		return 0;
+	}	
 	return result;
 }
 //选取敌人
@@ -894,6 +962,9 @@ PUnit ChooseEnemy(vector<PUnit>& heros){
 			min = tmp;
 			result = data->enemys[i];
 		}
+	}
+	if(min == 1000){
+		return data->enemys[28+data->info->camp];
 	}
 	return result;
 }
