@@ -5,13 +5,13 @@
 * 文件名称：ai.cpp
 * 摘	要：LOTA
 *
-* 当前版本：1.2
+* 当前版本：1.4
 * 作	者: chendaxixi/陈少滨
-* 完成日期：2015年4月30日
+* 完成日期：2015年5月5日
 *
-* 取代版本：1.1
+* 取代版本：1.3
 * 原作者  ：chendaxixi/陈少滨
-* 完成日期：2015年4月14日
+* 完成日期：2015年5月4日
 */
 
 #include "sdk.h"
@@ -24,12 +24,13 @@ using namespace std;
 class PData{
 public:
 	PData(const PMap* m = NULL, const PPlayerInfo* i = NULL):map(m), info(i), state(), 
-		myHeros(), block(), enemys(), target(), enemysInit(), blocksAdd(0), revivingTIME(), enemysRating(), symbols(), towers(),
-		towerLeft_Enemy(2), HideTIME(), flag(false), towerAttacked(false){
+		myHeros(), block(), enemys(), target(), enemysInit(), blocksAdd(0), revivingTIME(), enemysRating(), symbols(), towers(), oldState(),
+		towerLeft_Enemy(2), HideTIME(), flag(false), towerAttacked(false), changeTarget(false){
 		for(int i = 0;i < 5;i++){
 			already[i] = false;
 			levelUP[i] = 0;
 			state.push_back(-1);
+			oldState.push_back(-1);
 		}
 	}
 public:
@@ -41,6 +42,7 @@ public:
 	const PMap* map;
 	const PPlayerInfo* info;
 	vector<int> state;
+	vector<int> oldState;
 	vector<PUnit> myHeros;
 	vector<PUnit> enemys;
 	vector<PUnit> enemysSeen;
@@ -60,6 +62,7 @@ public:
 	int levelUP[5];
 	bool flag;
 	bool towerAttacked;
+	bool changeTarget;
 };
 
 //声明函数指针类型
@@ -290,6 +293,8 @@ void UpdateData(PCommand* cmd){
 						break;
 					}
 			}
+	//		if(data->towers[i].max_hp == 0)
+	//			data->towers.pop_back();
 		}
 	}
 	else{
@@ -304,6 +309,8 @@ void UpdateData(PCommand* cmd){
 						break;
 					}
 			}
+	//		if(data->towers[i].max_hp == 0)
+	//			data->towers.pop_back();
 		}
 	}
 
@@ -311,8 +318,9 @@ void UpdateData(PCommand* cmd){
 //		data->towerAttacked = true;
 	
 	for(int i = 0;i < data->myHeros.size();i++){
+		data->oldState[i] = data->state[i];
 		if(data->myHeros[i].findBuff("Reviving")){
-			data->state[i] = 0;
+			data->state[i] = -1;
 		}
 		UpdateUnit(data->target[i]);
 		UpdateTarget(data->myHeros[i]);
@@ -336,6 +344,7 @@ void UpdateState(PUnit& hero){
 }
 //Rule-Action规则对应
 void Rule_Action(PUnit& hero, PCommand* cmd){
+	if(data->state[rankHero(hero)] == -1) return;
 	if(hero.findBuff("Reviving")){
 		return;
 	}
@@ -423,7 +432,7 @@ bool Update_5(PUnit& hero){
 		rate = -1;
 	}
 	Pos pos;
-	if(data->enemysRating[1] != 2000){
+	if((data->enemysRating[1] != 2000 && !data->changeTarget) || data->enemysRating[0] == 2000){
 		pos.x = data->target[rankHero(hero)].pos.x + dx[rankHero(hero)] * rate;
 		pos.y = data->target[rankHero(hero)].pos.y + dy[rankHero(hero)] * rate;
 	}
@@ -737,9 +746,9 @@ void Action_0_3(PUnit& hero, PCommand* cmd){
 		if(canUseSkill(hero, 17)){
 			for(int i = -9;i <=9;i++)
 				for(int j = -9;j <= 9;j++){
-					if(i*i+j*j <= 81){
+					if(i*i+j*j <= 81 && hero.pos.x+i > 0 && hero.pos.x+i < 150 && hero.pos.y+j > 0 && hero.pos.y+j < 150){
 						Pos pos(hero.pos.x + i, hero.pos.y + j);
-						if(pos.x >=0 && pos.y >= 0 && data->map->height[pos.x][pos.y] <= 2){
+						if(pos.x >0 && pos.y > 0 && pos.x < 150 && pos.y < 150 && data->map->height[pos.x][pos.y] <= 2){
 							op.typeId = 17;
 							op.targets.push_back(pos);
 							cmd->cmds.push_back(op);
@@ -821,9 +830,9 @@ void Action_2_1(PUnit& hero, PCommand* cmd){
 	Operation op;
 	op.id = hero.id;
 	op.typeId = 17;
-	for(int i = -9;i <= 9;i++){
+/*	for(int i = -9;i <= 9;i++){
 		for(int j = -9;j <= 9;j++){
-			if(i*i + j*j <= 81){
+			if(i*i + j*j <= 81 && hero.pos.x+i > 0 && hero.pos.y + j > 0 && hero.pos.x+i < 150 && hero.pos.y+j < 150){
 				if(data->map->height[hero.pos.x + i][hero.pos.y + j] - 
 					data->map->height[hero.pos.x][hero.pos.y] >= 2){
 					op.targets.push_back(Pos(hero.pos.x+i,hero.pos.y+j));
@@ -833,15 +842,15 @@ void Action_2_1(PUnit& hero, PCommand* cmd){
 				}
 			}
 		}
-	}
+	}*/
 	int max = 0;
 	Pos pos;
 	for(int i = -9;i <= 9;i++){
 		for(int j = -9;j <= 9;j++){
-			if(i*i+j*j <= 81){
+			if(i*i + j*j <= 81 && hero.pos.x+i > 0 && hero.pos.y + j > 0 && hero.pos.x+i < 150 && hero.pos.y+j < 150){
 				int tmp = 0;
 				Pos posTmp(hero.pos.x+i, hero.pos.y+j);
-				for(int k = 0;k <= data->enemysSeen.size();k++)
+				for(int k = 0;k < data->enemysSeen.size();k++)
 					if(dis2(data->enemysSeen[k].pos, hero.pos) <= hero.view){
 						tmp += dis2(data->enemysSeen[k].pos, posTmp);
 					}
@@ -894,14 +903,20 @@ void Action_3_0(PUnit& hero, PCommand* cmd){
 //Action_4_0:
 void Action_4_0(PUnit& hero, PCommand* cmd){
 	if(LevelUp(hero, cmd)) return;
-	if(data->enemysRating[1] != 2000){
-		data->enemysRating[1] = 0;
+	if(!data->changeTarget){
+		if(data->enemysRating[1] != 2000)
+			data->enemysRating[1] = 0;
+		else 
+			data->enemysRating[0] = 0;
 	}
 	else{
-		data->enemysRating[0] = 0;
+		if(data->enemysRating[0] != 2000)
+			data->enemysRating[0] = 0;
+		else
+			data->enemysRating[1] = 0;
 	}
 	UpdateTarget(hero);
-	if(data->enemysRating[1] == 2000){
+/*	if(data->enemysRating[1] == 2000){
 		int num = 0;
 		for(int i = 0;i < data->myHeros.size();i++){
 			if(data->myHeros[i].findBuff("Reviving")){
@@ -923,7 +938,7 @@ void Action_4_0(PUnit& hero, PCommand* cmd){
 			cmd->cmds.push_back(op);
 			return;
 		}
-	}
+	}	*/
 //	Action_0_3(hero, cmd);
 	Operation op;
 	op.id = hero.id;
@@ -936,14 +951,16 @@ void Action_4_0(PUnit& hero, PCommand* cmd){
 		rate = -1;
 	}
 	Pos pos;
-	if(data->enemysRating[1] != 2000){
+	if((data->enemysRating[1] != 2000 && !data->changeTarget) || data->enemysRating[0] == 2000){
 		pos.x = data->target[rankHero(hero)].pos.x + dx[rankHero(hero)] * rate;
 		pos.y = data->target[rankHero(hero)].pos.y + dy[rankHero(hero)] * rate;
 	}
 	else{
-		if(dis2(hero.pos, data->spring) <= 4900){
-			pos.x = data->enemys[1].pos.x + dx[rankHero(hero)] * rate;
-			pos.y = data->enemys[1].pos.y + dy[rankHero(hero)] * rate;
+		if(dis2(hero.pos, data->spring) <= 2500){
+	//		pos.x = data->enemys[1].pos.x + dx[rankHero(hero)] * rate;
+	//		pos.y = data->enemys[1].pos.y + dy[rankHero(hero)] * rate;
+			pos.x = data->towers[0].pos.x + rankHero(hero) * 2 - 4;
+			pos.y = data->towers[0].pos.y + (-3) * rate;
 		}
 		else{
 			pos.x = data->enemys[0].pos.x + xx[rankHero(hero)] * rate;
@@ -965,8 +982,8 @@ void Action_5_0(PUnit& hero, PCommand* cmd){
 //Action_6_0:
 void Action_6_0(PUnit& hero, PCommand* cmd){
 	output << " id:" << hero.id << " dis:" << dis2(hero.pos, data->target[rankHero(hero)].pos) << " range:" << data->target[rankHero(hero)].range << endl;
-	if(data->enemysRating[1] != 2000 && !data->towerAttacked)
-		return;
+//	if(data->enemysRating[1] != 2000 && !data->towerAttacked)
+//		return;
 	if(dis2(hero.pos, data->target[rankHero(hero)].pos) > data->target[rankHero(hero)].range){
 		if(!hero.findBuff("Hided")){
 			output << " buff:no hided\n"; 
@@ -1026,7 +1043,7 @@ void Action_7_0(PUnit& hero, PCommand* cmd){
 				Pos pos = hero.pos;
 				for(int i = -9;i <= 9;i++){
 					for(int j = -9;j <= 9;j++){
-						if(i*i+j*j <= 81){
+						if(i*i+j*j <= 81 && hero.pos.x+i > 0 && hero.pos.x+i < 150 && hero.pos.y+j > 0 && hero.pos.y+j < 150){
 							Pos tmp(hero.pos.x+i, hero.pos.y+j);
 							if(data->map->height[tmp.x][tmp.y] == 0 && dis2(tmp, data->spring) < dis2(pos, data->spring)){
 								pos = tmp;
@@ -1069,7 +1086,7 @@ void Action_7_1(PUnit& hero, PCommand* cmd){
 		data->flag = true;
 	for(int i = 0;i < data->myHeros.size();i++)
 		if(data->myHeros[i].level < 2)
-			data->flag = false;
+			data->flag = false;	
 	int index = rankEnemy(data->target[rankHero(hero)]);
 	int typeId = data->target[rankHero(hero)].typeId;
 	if(typeId < 8){
@@ -1126,7 +1143,7 @@ void Action_11_0(PUnit& hero, PCommand* cmd){
 				Pos pos = hero.pos;
 				for(int j = -9;j < 9;j++)
 					for(int k = -9;k < 9;k++)
-						if(j*j+k*k <= 81){
+						if(j*j+k*k <= 81 && hero.pos.x+j > 0 && hero.pos.x+j < 150 && hero.pos.y+k > 0 && hero.pos.y+k < 150){
 							Pos tmp(hero.pos.x+j, hero.pos.y+k);
 							if(dis2(tmp, data->spring) < dis2(pos, data->spring) && 
 								data->map->height[tmp.x][tmp.y] <= 2)
@@ -1223,6 +1240,8 @@ void Init(){
 		data->enemysInit[i].hp = 0;
 		if(data->enemysInit[i].typeId == 3)
 			data->enemysInit[i].range = 100;
+		else
+			data->enemysInit[i].range = 81;
 	}
 	data->enemysRating[8+data->info->camp * 4] = 1;
 	data->enemysRating[9+data->info->camp * 4] = 1;
@@ -1301,6 +1320,8 @@ void UpdateEnemys(){
 }
 //评估函数
 int Evaluation(vector<PUnit>& heros, PUnit& enemy){
+	if(data->state[rankHero(heros[0])] >= 4 & data->state[rankHero(heros[0])] <= 6 && enemy.typeId != 3) 
+		return 1000;
 	int result = 1000;
 	int size = heros.size();
 	if(size == 0)
