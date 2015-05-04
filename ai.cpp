@@ -1072,8 +1072,8 @@ void Action_7_0(PUnit& hero, PCommand* cmd){
 		}
 	}
 	UpdateUnit(data->target[rankHero(hero)]);
-	UpdateState(hero);
 	UpdateTarget(hero);
+	UpdateState(hero);
 	Rule_Action(hero, cmd);
 }
 //Action_7_1
@@ -1103,8 +1103,8 @@ void Action_7_1(PUnit& hero, PCommand* cmd){
 	}
 	data->target[rankHero(hero)] = PUnit(0,-1,-1,-1,-1,-1);
 	UpdateUnit(data->target[rankHero(hero)]);
-	UpdateState(hero);
 	UpdateTarget(hero);
+	UpdateState(hero);
 	Rule_Action(hero, cmd);
 }
 //Action_7_2:
@@ -1113,8 +1113,8 @@ void Action_7_2(PUnit& hero, PCommand* cmd){
 		(data->target[rankHero(hero)].level + 1);
 	data->target[rankHero(hero)] = PUnit(0,-1,-1,-1,-1,-1);
 	UpdateUnit(data->target[rankHero(hero)]);
-	UpdateState(hero);
 	UpdateTarget(hero);
+	UpdateState(hero);
 	Rule_Action(hero, cmd);
 }
 
@@ -1414,6 +1414,7 @@ void UpdateUnit(PUnit& unit){
 
 bool isTargetDead(PUnit& hero){
 	int index = rankHero(hero);
+	if(data->revivingTIME[rankEnemy(data->target[rankHero(hero)])] > 0) return false;
 	if((data->target[index].max_hp > 0) && (data->target[index].hp <= 0)){
 		return true;
 	}
