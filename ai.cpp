@@ -1399,9 +1399,10 @@ bool isTargetDead(PUnit& hero){
 	if(data->target[index].typeId == 3){
 		bool flag = false;
 		for(int i = 0;i < data->myHeros.size();i++){
-			if((dis2(data->target[index].pos, data->myHeros[i].pos) <= data->myHeros[i].view) 
-				&& (data->map->height[data->target[index].pos.x][data->target[index].pos.y] - data->map->height[hero.pos.x][hero.pos.y] < 2)
-				&& !data->myHeros[i].findBuff("Reviving")){
+			if((dis2(data->target[i].pos, data->myHeros[i].pos) <= data->myHeros[i].view) 
+				&& (data->map->height[data->target[i].pos.x][data->target[i].pos.y] - data->map->height[data->myHeros[i].pos.x][data->myHeros[i].pos.y] < 2)
+				&& !data->myHeros[i].findBuff("Reviving")
+				&& data->target[i].id == data->target[rankHero(hero)].id){
 				flag = true;
 				break;
 			}
