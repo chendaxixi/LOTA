@@ -956,11 +956,11 @@ void Action_4_0(PUnit& hero, PCommand* cmd){
 		pos.y = data->target[rankHero(hero)].pos.y + dy[rankHero(hero)] * rate;
 	}
 	else{
-		if(dis2(hero.pos, data->spring) <= 2500){
-	//		pos.x = data->enemys[1].pos.x + dx[rankHero(hero)] * rate;
-	//		pos.y = data->enemys[1].pos.y + dy[rankHero(hero)] * rate;
-			pos.x = data->towers[0].pos.x + rankHero(hero) * 2 - 4;
-			pos.y = data->towers[0].pos.y + (-3) * rate;
+		if(dis2(hero.pos, data->spring) <= 4000){
+			pos.x = data->enemys[1].pos.x + dx[rankHero(hero)] * rate;
+			pos.y = data->enemys[1].pos.y + dy[rankHero(hero)] * rate;
+	//		pos.x = data->towers[0].pos.x + rankHero(hero) * 2 - 4;
+	//		pos.y = data->towers[0].pos.y + (-3) * rate;
 		}
 		else{
 			pos.x = data->enemys[0].pos.x + xx[rankHero(hero)] * rate;
