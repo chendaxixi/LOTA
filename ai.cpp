@@ -286,13 +286,7 @@ void UpdateData(PCommand* cmd){
 			data->towers.push_back(PUnit(3, 10+i, 0, 0, Player0_tower_pos[i].x, Player0_tower_pos[i].y));
 			data->towers[i].max_hp = 0;
 			UpdateUnit(data->towers[i]);
-			if(data->towers[i].max_hp > 0 && !data->towerAttacked){
-				for(int j = 3;j < 8;j++)
-					if(data->towers[i]["LastHit"]->val.size() > 0){
-						data->towerAttacked = true;
-						break;
-					}
-			}
+
 	//		if(data->towers[i].max_hp == 0)
 	//			data->towers.pop_back();
 		}
@@ -302,17 +296,14 @@ void UpdateData(PCommand* cmd){
 			data->towers.push_back(PUnit(3, 12+i, 1, 1, Player1_tower_pos[i].x, Player1_tower_pos[i].y));
 			data->towers[i].max_hp = 0;
 			UpdateUnit(data->towers[i]);
-			if(data->towers[i].max_hp > 0 && !data->towerAttacked){
-				for(int j = 3;j < 8;j++)
-					if(data->towers[i]["LastHit"]->val.size() > 0){
-						data->towerAttacked = true;
-						break;
-					}
-			}
 	//		if(data->towers[i].max_hp == 0)
 	//			data->towers.pop_back();
 		}
 	}
+
+	for(int i = 0;i < 2;i++)
+		if(data->towers[i].max_hp > 0 && data->towers[i]["LastHit"]->val.size() > 0)
+			data->towerAttacked = true;
 
 //	if(data->info->round >= 310)
 //		data->towerAttacked = true;
@@ -404,12 +395,15 @@ bool Update_4(PUnit& hero){
 			return true;
 	}
 	bool flag = true;
+	int level = 0;
 	for(int i = 0;i < data->myHeros.size();i++){
-		if(data->myHeros[i].level < 2 || data->myHeros[i].hp < 50){
+		level += data->myHeros[i].level;
+		if(data->myHeros[i].hp < 50){
 			flag = false;
 			break;
 		}
 	}
+	if(level < 8) flag = false;
 	return flag;
 }
 //×´Ì¬£ºÍÆËþÑ²Âß×´Ì¬
@@ -787,6 +781,12 @@ void Action_1_1(PUnit& hero, PCommand* cmd){
 			if(round == 0){
 				heros.push_back(data->myHeros[i]);
 			}
+			else{
+				round = ArriveTime(data->myHeros[i],
+					FindHeroAtkPos(data->myHeros[i], data->target[i]), data->myHeros[i].speed);
+				if(round == 0)
+					heros.push_back(data->myHeros[i]);
+			}
 		}
 	}
 	if(BeginAttack(heros, data->target[rankHero(hero)])){
@@ -984,7 +984,24 @@ void Action_6_0(PUnit& hero, PCommand* cmd){
 	output << " id:" << hero.id << " dis:" << dis2(hero.pos, data->target[rankHero(hero)].pos) << " range:" << data->target[rankHero(hero)].range << endl;
 //	if(data->enemysRating[1] != 2000 && !data->towerAttacked)
 //		return;
-	if(dis2(hero.pos, data->target[rankHero(hero)].pos) > data->target[rankHero(hero)].range){
+	int dx[] = {-15,-16,-17,-18,-19};
+	int dy[] = {-2,-3,-4,-5,-6};
+	int xx[] = {-10,-9,-8,-7,-6};
+	int yy[] = {10,11,12,13,13};
+	int rate = 1;
+	if(data->info->camp == 1){
+		rate = -1;
+	}
+	Pos pos;
+	if((data->enemysRating[1] != 2000 && !data->changeTarget) || data->enemysRating[0] == 2000){
+		pos.x = data->target[rankHero(hero)].pos.x + dx[rankHero(hero)] * rate;
+		pos.y = data->target[rankHero(hero)].pos.y + dy[rankHero(hero)] * rate;
+	}
+	else{
+		pos.x = data->enemys[0].pos.x + xx[rankHero(hero)] * rate;
+		pos.y = data->enemys[0].pos.y + yy[rankHero(hero)] * rate;
+	}
+	if(ArriveTime(hero, pos, hero.speed) == 0){
 		if(!hero.findBuff("Hided")){
 			output << " buff:no hided\n"; 
 			for(int i = 0;i < data->myHeros.size();i++)
@@ -1071,6 +1088,7 @@ void Action_7_0(PUnit& hero, PCommand* cmd){
 			return;
 		}
 	}
+	data->flag = true;
 	UpdateUnit(data->target[rankHero(hero)]);
 	UpdateTarget(hero);
 	UpdateState(hero);
@@ -1078,7 +1096,7 @@ void Action_7_0(PUnit& hero, PCommand* cmd){
 }
 //Action_7_1
 void Action_7_1(PUnit& hero, PCommand* cmd){
-	bool tmp = true;
+	bool tmp = false;
 	for(int i = 0;i < 2;i++)
 		if(data->towers[i].max_hp == 0)
 			tmp = false;
@@ -1168,7 +1186,7 @@ void Action_11_0(PUnit& hero, PCommand* cmd){
 	}
 	bool flag = true;
 	for(int i = 0;i < data->myHeros.size();i++)
-		if(!(dis2(data->myHeros[i].pos, data->spring) < 3000 && data->myHeros[i].hp > 200)){
+		if(!(dis2(data->myHeros[i].pos, data->spring) < 3000 && data->myHeros[i].hp > 150)){
 			flag = false;
 			break;
 		}
@@ -1178,10 +1196,15 @@ void Action_11_0(PUnit& hero, PCommand* cmd){
 		Rule_Action(hero, cmd);
 		return;
 	}
+	int dx[] = {1, 5, 4, 8, 6};
+	int dy[] = {-4, 0, -6, -2, -5};
+	int rate = 1;
+	if(data->info->camp == 1)
+		rate = -1;
 	Operation op;
 	op.id = hero.id;
 	op.type = "Move";
-	findShortestPath(*data->map, hero.pos, data->spring, data->block, op.targets);
+	findShortestPath(*data->map, hero.pos, data->spring + Pos(dx[rankHero(hero)]*rate, dy[rankHero(hero)]*rate), data->block, op.targets);
 	cmd->cmds.push_back(op);
 	data->already[rankHero(hero)] = true;
 }
@@ -1246,6 +1269,9 @@ void Init(){
 	data->enemysRating[8+data->info->camp * 4] = 1;
 	data->enemysRating[9+data->info->camp * 4] = 1;
 	data->enemysRating[28+data->info->camp] = 0;
+//	data->enemysRating[14-data->info->camp*4] = 1;
+//	data->enemysRating[18+data->info->camp*3] = 1;
+//	data->enemysRating[25-data->info->camp*2] = 1;
 	output << "Init: Size:" << data->enemysInit.size() << " " << data->enemysRating.size() << " " << data->revivingTIME.size() << endl;
 //	data->enemysInit[0].hp = 1000;
 //	data->enemysInit[1].hp = 1000;
@@ -1444,7 +1470,7 @@ bool isSeen(PUnit& enemy){
 
 bool LevelUp(PUnit& hero, PCommand* cmd){
 	if(hero["Exp"]->val[3] > 0){
-		int skill[] = {14,14,14,18,18,18,19,19,19,19};
+		int skill[] = {14,14,14,19,19,19,19,19,19,19};
 		Operation op;
 		op.id = hero.id;
 		op.typeId = skill[data->levelUP[rankHero(hero)]];
