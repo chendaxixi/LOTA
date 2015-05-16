@@ -20,17 +20,40 @@
 #include <fstream>
 using namespace std;
 
+//定义Block类型
+class PBlock{
+public:
+	PBlock():StaticBlock(), MoveBlock(), heroId(0), step(0){
+		for(int i = 0;i < Map_size;i++)
+			for(int j = 0;j < Map_size;j++){
+				BlockFlag[i][j] = false;
+				AreaSet[i][j] = -1;
+				visit[i][j] = 0;
+			}
+	}
+public:
+	bool BlockFlag[Map_size][Map_size];
+	int AreaSet[Map_size][Map_size];
+	int visit[Map_size][Map_size];
+	vector<Pos> StaticBlock;
+	vector<Pos> MoveBlock;
+	int heroId;
+	int step;
+};
 //定义游戏数据类
 class PData{
 public:
 	PData(const PMap* m = NULL, const PPlayerInfo* i = NULL):map(m), info(i), state(), 
-		myHeros(), block(), enemys(), target(), enemysInit(), blocksAdd(0), revivingTIME(), enemysRating(), symbols(), towers(), oldState(),
-		towerLeft_Enemy(2), HideTIME(), flag(false), towerAttacked(false), changeTarget(false){
+		myHeros(), block(), enemys(), target(), enemysInit(), revivingTIME(), enemysRating(), symbols(), towers(), oldState(),
+		towerLeft_Enemy(2), HideTIME(), flag(false), towerAttacked(false), changeTarget(false),
+		pathCount(0){
 		for(int i = 0;i < 5;i++){
 			already[i] = false;
 			levelUP[i] = 0;
 			state.push_back(-1);
 			oldState.push_back(-1);
+			vector<Pos> tmp;
+			myPaths.push_back(tmp);
 		}
 	}
 public:
@@ -50,19 +73,33 @@ public:
 	vector<Pos> endPos;
 	vector<PUnit> target;
 	vector<PUnit> towers;
-	vector<Pos> block;
+	PBlock block;
 	vector<Pos> symbols;
 	vector<int> enemysRating;
 	vector<int> revivingTIME;
 	vector<int> HideTIME;
+	vector<vector<Pos>> myPaths;
 	Pos spring;
 	bool already[5];
 	int towerLeft_Enemy;
-	int blocksAdd;
 	int levelUP[5];
 	bool flag;
 	bool towerAttacked;
 	bool changeTarget;
+	int pathCount;
+};
+//定义SPFA节点
+class PNode{
+public:
+	PNode():pos(0,0), prior(0), dis(0), round(0), start(0), step(0){
+	}
+public:
+	Pos pos;
+	int prior;
+	int dis;
+	int round;
+	int start;
+	int step;
 };
 
 //声明函数指针类型
@@ -165,6 +202,13 @@ bool canUseSkill(PUnit& hero, int typeId);
 bool BeginAttack(vector<PUnit>& heros, PUnit& enemy);
 void UpdateReviving();
 
+void InitBlock();
+void InitAreaSet();
+bool Valid(Pos pos);
+void findMyPath(const PMap &map, Pos start, Pos dest, PBlock& blocks, vector<Pos>& path);
+void findDirection(PNode& node, Pos& dest, int* dir_ord, bool* change);
+void UpdateBlock(PBlock& block);
+
 //全局变量
 Update updates[UpdateCount] = {Update_0, Update_1, Update_2, Update_3, Update_4, Update_5, Update_6, Update_7, Update_8, Update_9, Update_10, Update_11};
 int updates_State[UpdateCount] = {0,1,2,3,4,5,6,7,8,9,10,11};
@@ -212,6 +256,7 @@ int ruleRank[StateCount][RuleCount] ={
 	{0,1},
 	{0}
 	};
+PNode quene[23000];
 PData* data = new PData();
 ofstream output("result.txt");
 
@@ -239,15 +284,19 @@ void Interpert_Input(PCommand* cmd){
 	for(int i = 0;i < data->myHeros.size();i++){
 		Rule_Action(data->myHeros[i], cmd);
 	}
-	output << "blocks:" << data->block.size() << " " << data->blocksAdd << endl;
-	for(int i = 0;i < data->blocksAdd;i++)
-		data->block.pop_back();
+	for(int i = 0;i < data->enemys.size();i++){
+		if(isSeen(data->enemys[i]))
+			data->block.BlockFlag[data->enemys[i].pos.x][data->enemys[i].pos.y] = false;
+	}
 	for(int i = 0;i < cmd->cmds.size();i++){
 		output << "!!!cmd: id:" << cmd->cmds[i].id << " typeId:" << cmd->cmds[i].typeId << endl;
 	}
 }
 //更新data
 void UpdateData(PCommand* cmd){
+	for(int i = 0;i < 5;i++)
+		data->myPaths[i].clear();
+
 	data->myHeros.clear();
 	output << "units:" << endl;
 	for(int i = 0;i < data->info->units.size();i++){
@@ -267,17 +316,11 @@ void UpdateData(PCommand* cmd){
 
 	UpdateEnemys();
 	UpdateReviving();
-	data->blocksAdd = 0;
 	for(int i = 0;i < data->enemys.size();i++){
 //		if(data->enemys[i].max_hp > 0){
 		if(isSeen(data->enemys[i])){
-			data->block.push_back(data->enemys[i].pos);
-			data->blocksAdd++;
+			data->block.BlockFlag[data->enemys[i].pos.x][data->enemys[i].pos.y] = true;
 		}
-	}
-	for(int i = 0;i < data->myHeros.size();i++){
-		data->block.push_back(data->myHeros[i].pos);
-		data->blocksAdd++;
 	}
 		
 	data->towers.clear();
@@ -326,6 +369,7 @@ void UpdateData(PCommand* cmd){
 }
 //更新State
 void UpdateState(PUnit& hero){
+	data->block.heroId = rankHero(hero);
 	for(int i = 0;i < UpdateCount;i++)
 		if(updates[updateRank[i]](hero)){
 			data->state[rankHero(hero)] = updates_State[updateRank[i]];
@@ -336,6 +380,7 @@ void UpdateState(PUnit& hero){
 //Rule-Action规则对应
 void Rule_Action(PUnit& hero, PCommand* cmd){
 	if(data->state[rankHero(hero)] == -1) return;
+	data->block.heroId = rankHero(hero);
 	if(hero.findBuff("Reviving")){
 		return;
 	}
@@ -734,7 +779,7 @@ void Action_0_3(PUnit& hero, PCommand* cmd){
 	if(LevelUp(hero, cmd)) return;
 	Operation op;
 	op.id = hero.id;
-	findShortestPath(*data->map, hero.pos, FindHeroWaitPos(hero, data->target[rankHero(hero)]), 
+	findMyPath(*data->map, hero.pos, FindHeroWaitPos(hero, data->target[rankHero(hero)]), 
 		data->block, op.targets);
 	if(op.targets.size() == 1){
 		if(canUseSkill(hero, 17)){
@@ -793,7 +838,7 @@ void Action_1_1(PUnit& hero, PCommand* cmd){
 		Operation op;
 		op.id = hero.id;
 		op.type = "Move";
-		findShortestPath(*data->map, hero.pos, FindHeroAtkPos(hero, data->target[rankHero(hero)]),
+		findMyPath(*data->map, hero.pos, FindHeroAtkPos(hero, data->target[rankHero(hero)]),
 			data->block, op.targets);
 		cmd->cmds.push_back(op);
 		data->already[rankHero(hero)] = true;
@@ -808,7 +853,7 @@ void Action_1_2(PUnit& hero, PCommand* cmd){
 	Operation op;
 	op.id = hero.id;
 	op.type = "Move";
-	findShortestPath(*data->map, hero.pos, FindHeroAtkPos(hero, data->target[rankHero(hero)]),
+	findMyPath(*data->map, hero.pos, FindHeroAtkPos(hero, data->target[rankHero(hero)]),
 		data->block, op.targets);
 	cmd->cmds.push_back(op);
 	data->already[rankHero(hero)] = true;
@@ -871,7 +916,7 @@ void Action_2_2(PUnit& hero, PCommand* cmd){
 	op.id = hero.id;
 	if(hero.findBuff(0)){
 		op.type = "Move";
-		findShortestPath(*data->map, hero.pos, data->spring, data->block, op.targets);
+		findMyPath(*data->map, hero.pos, data->spring, data->block, op.targets);
 		cmd->cmds.push_back(op);
 		data->already[rankHero(hero)] = true;
 		return;
@@ -884,7 +929,7 @@ void Action_2_2(PUnit& hero, PCommand* cmd){
 		return;
 	}
 	op.type = "Move";
-	findShortestPath(*data->map, hero.pos, data->spring, data->block, op.targets);
+	findMyPath(*data->map, hero.pos, data->spring, data->block, op.targets);
 	cmd->cmds.push_back(op);
 	data->already[rankHero(hero)] = true;
 	return;
@@ -934,7 +979,7 @@ void Action_4_0(PUnit& hero, PCommand* cmd){
 			Operation op;
 			op.id = hero.id;
 			op.type = "Move";
-			findShortestPath(*data->map, hero.pos, data->spring, data->block, op.targets);
+			findMyPath(*data->map, hero.pos, data->spring, data->block, op.targets);
 			cmd->cmds.push_back(op);
 			return;
 		}
@@ -967,7 +1012,7 @@ void Action_4_0(PUnit& hero, PCommand* cmd){
 			pos.y = data->enemys[0].pos.y + yy[rankHero(hero)] * rate;
 		}
 	}
-	findShortestPath(*data->map, hero.pos, pos, 
+	findMyPath(*data->map, hero.pos, pos, 
 		data->block, op.targets);
 	op.type = "Move";
 	cmd->cmds.push_back(op);
@@ -1025,7 +1070,7 @@ void Action_6_0(PUnit& hero, PCommand* cmd){
 			Operation op;
 			op.id = hero.id;
 			op.type = "Move";
-			findShortestPath(*data->map, hero.pos, FindHeroAtkPos(hero, data->target[rankHero(hero)]), data->block, op.targets);
+			findMyPath(*data->map, hero.pos, FindHeroAtkPos(hero, data->target[rankHero(hero)]), data->block, op.targets);
 			cmd->cmds.push_back(op);
 		}
 		return;
@@ -1034,7 +1079,7 @@ void Action_6_0(PUnit& hero, PCommand* cmd){
 		Operation op;
 		op.id = hero.id;
 		op.type = "Move";
-		findShortestPath(*data->map, hero.pos, FindHeroAtkPos(hero, data->target[rankHero(hero)]), data->block, op.targets);
+		findMyPath(*data->map, hero.pos, FindHeroAtkPos(hero, data->target[rankHero(hero)]), data->block, op.targets);
 		cmd->cmds.push_back(op);
 		return;
 	}
@@ -1083,7 +1128,7 @@ void Action_7_0(PUnit& hero, PCommand* cmd){
 			Operation op;
 			op.id = hero.id;
 			op.type = "Move";
-			findShortestPath(*data->map, hero.pos, data->spring, data->block, op.targets);
+			findMyPath(*data->map, hero.pos, data->spring, data->block, op.targets);
 			cmd->cmds.push_back(op);
 			return;
 		}
@@ -1204,7 +1249,7 @@ void Action_11_0(PUnit& hero, PCommand* cmd){
 	Operation op;
 	op.id = hero.id;
 	op.type = "Move";
-	findShortestPath(*data->map, hero.pos, data->spring + Pos(dx[rankHero(hero)]*rate, dy[rankHero(hero)]*rate), data->block, op.targets);
+	findMyPath(*data->map, hero.pos, data->spring + Pos(dx[rankHero(hero)]*rate, dy[rankHero(hero)]*rate), data->block, op.targets);
 	cmd->cmds.push_back(op);
 	data->already[rankHero(hero)] = true;
 }
@@ -1213,13 +1258,6 @@ int forbidden[] = {24,34,25,27,35,28};
 
 //初始化
 void Init(){
-	data->block.clear();
-	data->block.push_back(Player0_spring_pos[0]);
-	for(int i = 0;i < 2;i++){
-		data->block.push_back(Player0_tower_pos[i]);
-		data->block.push_back(Player1_tower_pos[i]);
-	}
-
 	if(data->info->camp == 0){
 		for(int i = 0;i < 2;i++){
 			data->enemysInit.push_back(PUnit(3, 12+i, 1, 1, Player1_tower_pos[i].x, Player1_tower_pos[i].y));
@@ -1283,6 +1321,9 @@ void Init(){
 		data->enemysRating[rankEnemy(enemy)] = 1000;
 		output << "Forbidden:" << rankEnemy(enemy) << " Size:" << data->enemysRating.size() << endl;
 	}
+
+	InitBlock();
+	InitAreaSet();
 
 	data->symbols.push_back(Pos(22,68));
 	if(data->info->camp == 0){
@@ -1494,7 +1535,7 @@ int ArriveTime(PUnit& hero, Pos pos, int speed){
 		return 0;
 	}
 	int distance = sqrt(dx*dx+dy*dy);
-	return distance / sqrt(speed);
+	return (int)(distance / sqrt(speed))+1;
 }
 
 void FindEnemysAble(PUnit& hero, vector<PUnit>& enemys){
@@ -1621,4 +1662,201 @@ void UpdateReviving(){
 			data->revivingTIME[i]--;
 		}
 	}
+}
+
+
+bool Valid(Pos pos){
+	return (pos.x >= 0 & pos.x < 151 & pos.y >= 0 & pos.y < 151);
+}
+
+void findMyPath(const PMap& map, Pos start, Pos dest, PBlock& blocks, vector<Pos>& path){
+	path.clear();
+	output << "MyPaths: ";
+	for(int i = 0;i < 5;i++)
+		output << data->myPaths[i].size() << " flag:" << (data->myPaths[i].size() == 0) << " ";
+	output << endl;
+	blocks.step = 0;
+	for(int i = blocks.heroId+1;i < data->myHeros.size();i++){
+		blocks.MoveBlock.push_back(data->myHeros[i].pos);
+		blocks.BlockFlag[blocks.MoveBlock.back().x][blocks.MoveBlock.back().y] = true;
+	}
+	for(int i = 0;i < blocks.heroId;i++)
+		if(data->myPaths[i].size() == 0){
+			blocks.MoveBlock.push_back(data->myHeros[i].pos);
+			blocks.BlockFlag[blocks.MoveBlock.back().x][blocks.MoveBlock.back().y] = true;
+		}
+	data->pathCount++;
+	int front = 0, rear = 0;
+	quene[0].pos = start;
+	quene[0].prior = -1;
+	quene[0].start = 0;
+	quene[0].step = 0;
+	blocks.visit[start.x][start.y] = data->pathCount;
+	int dir_ord[4];
+	bool change[4];
+	Pos tmp;
+	bool exitFlag = false;
+	int min = front;
+	while(front <= rear){
+	//	output << "\t" << quene[front].pos.x << "," << quene[front].pos.y << endl;
+		if(blocks.step == quene[front].step){
+			UpdateBlock(blocks);
+			blocks.step++;
+		}
+		findDirection(quene[front], dest, dir_ord, change);
+		for(int i = 0;i < 4;i++){
+			tmp = quene[front].pos + Pos(dir[dir_ord[i]][0], dir[dir_ord[i]][1]);
+			if(Valid(tmp) && blocks.visit[tmp.x][tmp.y] != data->pathCount 
+			&& abs(map.height[quene[front].pos.x][quene[front].pos.y]-map.height[tmp.x][tmp.y]) < 2 
+			&& !blocks.BlockFlag[tmp.x][tmp.y]){
+				blocks.visit[tmp.x][tmp.y] = data->pathCount;
+				rear++;
+				if(dis2(tmp, dest) < dis2(quene[min].pos, dest))
+					min = rear;
+				quene[rear].pos = tmp;
+				quene[rear].prior = front;
+				if(change[i])
+					quene[rear].start = rear;
+				else
+					quene[rear].start = quene[front].start;
+				quene[rear].step = quene[front].step+1;
+				if(tmp == dest){
+					exitFlag = true;
+					break;
+				}
+			}
+			else if(blocks.AreaSet[start.x][start.y] != blocks.AreaSet[tmp.x][tmp.y] 
+			&& blocks.AreaSet[tmp.x][tmp.y] == blocks.AreaSet[dest.x][dest.y]){
+				rear = front;
+				exitFlag = true;
+				break;
+			}
+		}
+	//	output << "\tend.";
+		if(exitFlag) break;
+		front++;
+	}
+	output << "findPath!\n";
+	if(!exitFlag)
+		rear = min;
+	while(rear != -1){
+		path.push_back(quene[rear].pos);
+		rear = quene[rear].prior;
+	}
+	int size = path.size();
+	for(int i = 0;i < size/2;i++){
+		Pos tmp = path[i];
+		path[i] = path[size-1-i];
+		path[size-1-i] = tmp;
+	}
+	for(int i = 0;i < size;i++)
+		data->myPaths[blocks.heroId].push_back(path[i]);
+	output << "findPath: size" << size << " dest:" << path[size-1].x << "," << path[size-1].y << endl;
+	output << " path:";
+	for(int i = 0;i < 10;i++)
+		if(i < size)
+			output << " " << path[i].x << "," << path[i].y << ":" << blocks.AreaSet[path[i].x][path[i].y];
+	output << endl;
+	for(int i = 0;i < blocks.MoveBlock.size();i++){
+		blocks.BlockFlag[blocks.MoveBlock[i].x][blocks.MoveBlock[i].y] = false;
+	}
+	blocks.MoveBlock.clear();
+}
+
+void findDirection(PNode& node, Pos& dest, int* dir_ord, bool* change){
+	for(int i = 0;i < 4;i++)
+		dir_ord[i] = i;
+	random_shuffle(dir_ord, dir_ord+4);
+	for(int i = 0;i < 4;i++)
+		change[i] = false;
+	return;
+	int sizeA = 0, sizeB = 0;
+	int a[4];
+	int b[4];
+	Pos pos;
+	for(int i = 0;i < 4;i++){
+		pos = node.pos + Pos(dir[i][0],dir[i][1]);
+		if(checkOnLine(node.start, dest, pos)){
+			a[sizeA] = i;
+			sizeA++;
+		}
+		else{
+			b[sizeB] = i;
+			sizeB++;
+		}
+	}
+	for(int i = 0;i < sizeA;i++){
+		dir_ord[i] = a[i];
+		change[i] = false;
+	}
+	for(int i = sizeA;i < 4;i++){
+		dir_ord[i] = b[i-sizeA];
+		change[i] = true;
+	}
+}
+
+void UpdateBlock(PBlock& blocks){
+	int num = 0;
+	for(int i = 0;i < blocks.heroId;i++){
+		if(blocks.step > 0 && data->myPaths[i].size() > blocks.step){
+			blocks.BlockFlag[blocks.MoveBlock.back().x][blocks.MoveBlock.back().y] = false;
+			blocks.MoveBlock.pop_back();
+			num++;
+		}
+	}
+	num = 0;
+	for(int i = 0;i < blocks.heroId;i++){
+		if((int)data->myPaths[i].size()-1 > blocks.step){
+			blocks.MoveBlock.push_back(data->myPaths[i][blocks.step+1]);
+			blocks.BlockFlag[blocks.MoveBlock.back().x][blocks.MoveBlock.back().y] = true;
+			num++;
+		}
+	}
+}
+
+void InitBlock(){
+	for(int i = 0;i < data->enemys.size();i++){
+		if(i > 7){
+			data->block.StaticBlock.push_back(data->enemys[i].pos);
+		}
+	}
+	data->block.StaticBlock.push_back(Player0_spring_pos[0]);
+	data->block.StaticBlock.push_back(Player1_spring_pos[0]);
+	for(int i = 0;i < 2;i++){
+		data->block.StaticBlock.push_back(Player0_tower_pos[i]);
+		data->block.StaticBlock.push_back(Player1_tower_pos[i]);
+	}
+	for(int i = 0;i < 3;i++){
+		data->block.StaticBlock.push_back(Pos(42+i,28));
+		data->block.StaticBlock.push_back(Pos(106+i,122));
+	}
+
+	for(int i = 0;i < data->block.StaticBlock.size();i++)
+		data->block.BlockFlag[data->block.StaticBlock[i].x][data->block.StaticBlock[i].y] = true;
+}
+
+void InitAreaSet(){
+	int num = 0;
+	for(int i = 0;i < 6;i++)
+		data->block.AreaSet[data->block.StaticBlock[29+i].x][data->block.StaticBlock[29+i].y] = -2;
+	for(int i = 0;i < Map_size;i++)
+		for(int j = 0;j < Map_size;j++)
+			if(data->block.AreaSet[i][j] == -1){
+				int front = 0, rear = 0;
+				num++;
+				quene[0].pos = Pos(i,j);
+				data->block.AreaSet[i][j] = num;
+				while(front <= rear){
+					for(int k = 0;k < 4;k++){
+						Pos tmp = quene[front].pos + Pos(dir[k][0],dir[k][1]);
+						if(Valid(tmp) && data->block.AreaSet[tmp.x][tmp.y] == -1 
+							&& abs(data->map->height[quene[front].pos.x][quene[front].pos.y]-data->map->height[tmp.x][tmp.y]) <= 1){
+							rear++;
+							quene[rear].pos = tmp;
+							data->block.AreaSet[tmp.x][tmp.y] = num;
+						}
+					}
+					front++;
+				}
+			}
 }
